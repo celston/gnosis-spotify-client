@@ -1,0 +1,1479 @@
+var recentArtists = {};
+var unprocessedRecentArtists;
+var unprocessedRecentTracks;
+var globalSearch;
+var currentPlaylist;
+var trackIndex = {};
+var unprocessedSpiderArtists = new Array();
+var totalArtists = 0;
+var unprocessedArtists;
+var similarArtists = {};
+var failures = {};
+var recentArtists = {};
+var trackTableIndex = 1;
+var artistHash = {};
+var remoteData = {};
+
+require([
+	'$api/models',
+	'$api/search#Search',
+	'$api/library#Library'
+], function(models, search, library) {
+	'use strict';
+
+	globalSearch = search;
+
+	document.getElementById('go').addEventListener('click', function() {
+		initTrackIndex(function () {
+			console.log(trackIndex);
+			//createPlaylistFromRecentTracksWithSimilarArtists();
+			//createPlaylistFromUnderListenedArtists();
+			//createPlaylistFromSingleArtist();
+		});
+	});
+
+	function createPlaylistFromSimilarArtistsFromPlaylist() {
+		populateUnprocessedArtistsFromPlaylist(
+			'spotify:user:1236333377:playlist:2vCX7giPBDIYliupaBqsiA',
+			populateSimilarArtists,
+			function () {
+				loadData('lastfm/user/artists/celston', 1, function (userArtists) {
+					var ratings = {};
+					for (var similarArtist in similarArtists) {
+						if (!userArtists.hasOwnProperty(similarArtist)) {
+							userArtists[similarArtist] = 0;
+						}
+						ratings[similarArtist] = userArtists[similarArtist] * similarArtists[similarArtist];
+					}
+					var totalRating = 0;
+					var totalAdjustedRating = 0;
+					var adjustedRatings = {};
+					for (var artist in ratings) {
+						totalRating += ratings[artist];
+						var adjusted = Math.sqrt(ratings[artist]);
+						adjustedRatings[artist] = adjusted;
+						totalAdjustedRating += adjusted;
+					}
+					var i = 1;
+					artistHash = {};
+					var scale = 1000000;
+					getTopPercentile(ratings, 1).forEach(function (artist) {
+						if (userArtists[artist] > 0) {
+							$('#results tbody').append('<tr><td>' + i + '</td><td>' + artist + '</td><td>' + similarArtists[artist] + '</td><td>' + userArtists[artist] + '</td><td>' + Math.round(adjustedRatings[artist]) + '</td><td>' + Math.round(4000 * adjustedRatings[artist]/totalAdjustedRating) + '</td></tr>');
+							//$('#results tbody').append('<tr><td>' + i + '</td><td>' + artist + '</td><td>' + similarArtists[artist] + '</td><td>' + userArtists[artist] + '</td><td>' + Math.round(ratings[artist]) + ' (' + Math.round(1000 * ratings[artist]/totalRating)/10 + ')</td><td>' + Math.round(adjustedRatings[artist]) + ' (' + Math.round(1000 * adjustedRatings[artist]/totalAdjustedRating)/10 + ')</td></tr>');
+							var key = Math.round(scale * adjustedRatings[artist]);
+							var found = false;
+							while (!found) {
+								if (!artistHash.hasOwnProperty(key)) {
+									artistHash[key] = artist;
+									found = true;
+								}
+								else {
+									key += rand(1, scale);
+								}
+							}
+							i++;
+						}
+					});
+
+					totalArtists = 0;
+					unprocessedArtists = [];
+					for (i = 0; i < 4000; i++) {
+						unprocessedArtists.push(wrand(artistHash));
+					}
+					/*
+					initTrackIndex(function () {
+						createAndLoadPlaylistWithDateName(function () {
+							processArtists(addArtistTrackToPlaylist, wrapUp);
+						});
+					});
+					*/
+				});
+			}
+		);
+	}
+
+	//addLog(normalizeTrackName('18 Wheels of Love'));
+
+	function createPlaylistFromSingleArtist() {
+		unprocessedArtists = new Array();
+		for (var i = 0; i < 50; i++) {
+			unprocessedArtists.push('Screeching Weasel');
+		}
+		createAndLoadPlaylistWithDateName(function (loadedPlaylist) {
+			totalArtists = 0;
+			processArtists(addArtistTrackToPlaylist, wrapUp);
+		});
+	}
+
+	function createPlaylistFromUnderListenedArtists() {
+		loadData('lastfm/user/recenttracks/celston/5000', 1, function (recentTracks) {
+			loadData('lastfm/user/artists/celston', 1, function (userArtists) {
+				var ratings = {};
+				for (var userArtist in userArtists) {
+					var recentTrackCount = 0;
+					if (recentTracks.hasOwnProperty(userArtist)) {
+						for (var trackName in recentTracks[userArtist]) {
+							recentTrackCount += recentTracks[userArtist][trackName];
+						}
+					}
+	
+					var playCount = new Number(userArtists[userArtist]);
+					if (recentTrackCount == 0) {
+						ratings[userArtist] = playCount * 2;
+					}
+					else {
+						ratings[userArtist] = Math.round(playCount / recentTrackCount);
+					}
+				}
+				var scale = 1000;
+				getTopPercentile(ratings, 0.2).forEach(function (artist) {
+					var key = ratings[artist] * scale;
+					var found = false;
+					while (!found) {
+						if (!artistHash.hasOwnProperty(key)) {
+							artistHash[key] = artist;
+							found = true;
+						}
+						else {
+							key += rand(1, scale);
+						}
+					}
+				});
+				unprocessedArtists = new Array();
+				for (var i = 0; i < 2000; i++) {
+					unprocessedArtists.push(wrand(artistHash));
+				}
+				createAndLoadPlaylistWithDateName(function (loadedPlaylist) {
+					totalArtists = 0;
+					processArtists(addArtistTrackToPlaylist, wrapUp);
+				});
+			});
+		});
+	}
+
+	function createPlaylistFromRecentTracksWithSimilarArtists() {
+		loadData('lastfm/user/recenttracks/celston/5000', 1, function (recentTracks) {
+			for (var recentArtist in recentTracks) {
+				recentArtists[recentArtist] = 0;
+				for (var recentTrack in recentTracks[recentArtist]) {
+					recentArtists[recentArtist] += new Number(recentTracks[recentArtist][recentTrack]);
+				}
+			}
+			unprocessedArtists = Object.keys(recentArtists);
+			processArtists(populateSimilarArtistsFromRecentArtist, function () {
+				var topSimilarArtists = getTopPercentile(similarArtists, 0.2);
+				console.log(topSimilarArtists);
+	
+				var scale = 100;
+				for (var artistName in recentArtists) {
+					var key = recentArtists[artistName] * scale;
+					var found = false;
+					while (!found) {
+						if (!artistHash.hasOwnProperty(key)) {
+							artistHash[key] = artistName;
+							found = true;
+						}
+						else {
+							key += rand(1, scale);
+						}
+					}
+				}
+				topSimilarArtists.forEach(function (artistName) {
+					var key = 0;
+					var found = false;
+					while (!found) {
+						if (!artistHash.hasOwnProperty(key)) {
+							artistHash[key] = artistName;
+							found = true;
+						}
+						else {
+							key += rand(1, scale);
+						}
+					}
+				});
+				unprocessedArtists = new Array();
+				for (var i = 0; i < 6000; i++) {
+					unprocessedArtists.push(wrand(artistHash));
+				}
+		
+				createAndLoadPlaylistWithDateName(function (loadedPlaylist) {
+					totalArtists = 0;
+					processArtists(addArtistTrackToPlaylist, wrapUp);
+				});
+			});
+		});
+	}
+
+	function populateSimilarArtists(artist, completedCallback) {
+		loadData('lastfm/artist/similar/'+encodeURIComponent(artist.replace('/','').toLowerCase()), 1, function (data) {
+			if (!similarArtists.hasOwnProperty(similarArtist)) {
+				similarArtists[artist] = 0;
+			}
+			similarArtists[artist] += 1;
+			for (var similarArtist in data) {
+				if (!similarArtists.hasOwnProperty(similarArtist)) {
+					similarArtists[similarArtist] = 0;
+				}
+				similarArtists[similarArtist] += new Number(data[similarArtist]);
+			}
+			processArtists(populateSimilarArtists, completedCallback);
+		});
+	}
+
+	function populateSimilarArtistsFromRecentArtist(artist, completedCallback) {
+		loadData('lastfm/artist/similar/'+encodeURIComponent(artist.replace('/','').toLowerCase()), 1, function (data) {
+			for (var similarArtist in data) {
+				if (!recentArtists.hasOwnProperty(similarArtist)) {
+					if (!similarArtists.hasOwnProperty(similarArtist)) {
+						similarArtists[similarArtist] = 0;
+					}
+					similarArtists[similarArtist] += new Number(recentArtists[artist]) * new Number(data[similarArtist]);
+				}
+			}
+			processArtists(populateSimilarArtistsFromRecentArtist, completedCallback);
+		});
+	}
+
+	function populatePlaylistWithRandomTracksFromLibraryArtists(loadedPlaylist) {
+		loadData('lastfm/library/artists/celston', 1, function (data) {
+			var scale = 100;
+			for (var artistName in data) {
+				var key = data[artistName] * scale;
+				var found = false;
+				while (!found) {
+					if (!artistHash.hasOwnProperty(key)) {
+						artistHash[key] = artistName;
+						found = true;
+					}
+					else {
+						key += rand(1, scale);
+					}
+				}
+			}
+			unprocessedArtists = new Array();
+			for (var i = 0; i < 2000; i++) {
+				unprocessedArtists.push(wrand(artistHash));
+			}
+	
+			processArtists(addArtistTrackToPlaylist, wrapUp);
+		});
+	}
+
+	function addArtistTrackToPlaylist(artistName, completedCallback) {
+		loadData('lastfm/library/tracks/celston/' + encodeURIComponent(artistName.replace('/','').toLowerCase()), 1, function (libraryArtistTracks) {
+			console.log('check');
+			var trackHash = {};
+			var scale = 100;
+			var totalPlays = 0;
+			console.log(libraryArtistTracks);
+			for (var trackName in libraryArtistTracks) {
+				var plays = new Number(libraryArtistTracks[trackName]);
+				totalPlays += plays;
+				var key = plays * scale;
+				var found = false;
+				while (!found) {
+					if (!trackHash.hasOwnProperty(key)) {
+						trackHash[key] = trackName;
+						found = true;
+					}
+					else {
+						key += rand(1, scale);
+					}
+				}
+			}
+			var libraryTrackCount = Object.keys(libraryArtistTracks).length
+			var playDiff = totalPlays - libraryTrackCount;
+			console.log('Play Diff = ' + playDiff);
+			if (playDiff == 0 && libraryTrackCount == 0) {
+				playDiff = 5;
+			}
+			if (playDiff > 0) {
+				loadData('lastfm/artist/tracks/'+encodeURIComponent(artistName.replace('/','').toLowerCase())+'/400', 1, function (artistTracks) {
+					var newTracks = [];
+					for (var trackName in artistTracks) {
+						if (!libraryArtistTracks.hasOwnProperty(trackName)) {
+							newTracks.push(trackName);
+							playDiff--;
+							if (playDiff <= 0) {
+								break;
+							}
+						}
+					}
+					console.log(newTracks);
+					newTracks.forEach(function (trackName) {
+						var key = 0;
+						var found = false;
+						while (!found) {
+							if (!trackHash.hasOwnProperty(key)) {
+								trackHash[key] = trackName;
+								found = true;
+							}
+							else {
+								key += rand(1, scale);
+							}
+						}
+					});
+					console.log(trackHash);
+					var trackName = wrand(trackHash);
+					findTracks(artistName, trackName, function (tracks, a, t) {
+						if (tracks.length > 0) {
+							addTracksToPlaylist(tracks, 1, currentPlaylist);
+						}
+						processArtists(addArtistTrackToPlaylist, completedCallback);
+					});
+				});
+			}
+			else {
+				console.log(trackHash);
+				var trackName = wrand(trackHash);
+				findTracks(artistName, trackName, function (tracks, a, t) {
+					if (tracks.length > 0) {
+						addTracksToPlaylist(tracks, 1, currentPlaylist);
+					}
+					processArtists(addArtistTrackToPlaylist, completedCallback);
+				});
+			}
+		});
+	}
+
+	function analyzeArtist(artistName) {
+		loadData('lastfm/library/tracks/celston/' + encodeURIComponent(artistName.replace('/','').toLowerCase()), 1, function (libraryArtistTracks) {
+			$('#totalArtists').val(new Number($('#totalArtists').val()) + 1);
+			var trackNames = getTopPercentile(libraryArtistTracks, 1);
+			trackNames.forEach(function (trackName) {
+				var count = new Number(libraryArtistTracks[trackName]);
+				var repeats = Math.round(Math.pow(count, 1/3));
+				$('#totalTracks').val(new Number($('#totalTracks').val()) + repeats);
+				$('#artists tbody').append('<tr><td>' + trackTableIndex + '</td><td>' + artistName + '</td><td>' + trackName + '</td><td>' + count + '</td><td>' + repeats + '</td></tr>');
+				trackTableIndex++;
+			});
+			removeElementFromArray(unprocessedArtists, artistName);
+			processArtists(analyzeArtist, wrapUp);
+		});
+	}
+
+	function getTopPercentile(obj, percent) {
+		var total = 0;
+		var keys = getObjectPropertiesOrderedByValueDesc(obj);
+		keys.forEach(function (key) {
+			total += new Number(obj[key]);
+		});
+		var threshold = Math.round(percent * total);
+		console.log('total = ' + total);
+		console.log('threshold = ' + threshold);
+
+		var used = 0;
+		var done = false;
+		return keys.filter(function (key) {
+			used += new Number(obj[key]);
+			if (!done && used < threshold) {
+				return true;
+			}
+			done = true;
+			return false;
+		});
+	}
+
+	function getObjectPropertiesOrderedByValueDesc(obj) {
+		var keys = Object.keys(obj);
+		keys.sort(function (a, b) {
+			var n1 = new Number(obj[a]);
+			var n2 = new Number(obj[b]);
+			if (n1 == n2) {
+				return 0;
+			}
+			return n1 > n2 ? -1 : 1;
+		});
+
+		return keys;
+	}
+
+	function sortObjectPropertiesByValuesDesc(obj) {
+		var list = [];
+		for (var key in obj) {
+			list.push([key, obj[key].playcount]);
+		}
+
+		list.sort(function (a, b) {
+			if (a[1] == b[1]) {
+				return 0;
+			}
+			return a[1] > b[1] ? -1 : 1;
+		});
+
+		var sorted = [];
+		list.forEach(function (row) {
+			sorted.push(row[0]);
+		});
+
+		return sorted;
+	}
+
+	function addArtistLibraryTracksToPlaylist(artist) {
+		loadData('lastfm/library/tracks/celston/' + encodeURIComponent(artist.toLowerCase()), 1, function (libraryArtistTracks) {
+			for (var key in libraryArtistTracks) {
+				if (libraryArtistTracks[key] == 0) {
+					libraryArtistTracks[key] = 1;
+				}
+			}
+
+			getTopPercentile(libraryArtistTracks, 0.4).forEach(function (trackName) {
+				var count = Math.ceil(libraryArtistTracks[trackName]/3);
+				findTracks(normalizeArtistName(artist), trackName, function (tracks, a, t) {
+					if (tracks.length > 0) {
+						addTracksToPlaylist(tracks, count, currentPlaylist);
+					}
+					else {
+						console.log('Nothing found for ' + a + ' - ' + t);
+					}
+				});
+			});
+			removeElementFromArray(unprocessedArtists, artist);
+			processArtists(addArtistLibraryTracksToPlaylist, wrapUp);
+		});
+	}
+
+	function countArtistLibraryTracks(artist) {
+		loadData('lastfm/library/tracks/celston/' + encodeURIComponent(artist.toLowerCase()), 1, function (tracks) {
+			for (var track in tracks) {
+				var temp = new Number(tracks[track].playcount);
+				if (temp == 0) {
+					temp = 1;
+				}
+				count += temp;
+			}
+			console.log(artist + ': ' + count);
+			removeElementFromArray(unprocessedArtists, artist);
+			processArtists(countArtistLibraryTracks, wrapUp);
+		});
+	}
+
+	function wrapUp() {
+		console.log('*** DONE ***');
+		var failureCount = 0;
+		console.log(failures);
+		for (var artist in failures) {
+			console.log(artist);
+			for (var track in failures[artist]) {
+				console.log('    ' + track);
+				failureCount++;
+			}
+		}
+		console.log(failureCount);
+	}
+
+	function clearAllLocalStorage() {
+		console.log(localStorage);
+		Object.keys(localStorage).forEach(function (key) {
+			delete localStorage[key];
+		});
+		console.log(localStorage);
+	}
+
+	function populateUnprocessedArtistsFromPlaylist(playlistId, processCallback, completedCallback) {
+		models.Playlist.fromURI(playlistId).load('tracks').done(function (playlist) {
+			snapshotAndLoadAll(playlist.tracks, function (loadedTracks) {
+				var artists = {};
+				loadedTracks.forEach(function (track) {
+					var artistName = track.artists[0].name;
+					if (!artists.hasOwnProperty(artistName)) {
+						artists[artistName] = 0;
+					}
+					artists[artistName]++;
+				});
+				unprocessedArtists = Object.keys(artists);
+				processArtists(processCallback, completedCallback);
+			});
+		});
+	}
+
+	function generatePlaylistFromPlaylistSimilarArtists() {
+		models.Playlist.fromURI('spotify:user:1236333377:playlist:2vCX7giPBDIYliupaBqsiA').load('tracks').done(function (playlist) {
+			snapshotAndLoadAll(playlist.tracks, function (loadedTracks) {
+				var artists = {};
+				loadedTracks.forEach(function (track) {
+					var artistName = track.artists[0].name;
+					if (!artists.hasOwnProperty(artistName)) {
+						artists[artistName] = 0;
+					}
+					artists[artistName]++;
+				});
+				unprocessedArtists = Object.keys(artists);
+				processArtists(loadSimilarArtists, loadSimilarArtistsCompleted);
+			});
+		});
+	}
+
+	function generatePlaylistForLastFmTopArtistsLowPlayTracks() {
+		createAndLoadPlaylistWithDateName(function (loadedPlaylist) {
+			loadData('lastfm/user/artists/celston', 1, function (userArtists) {
+				userArtists.slice(0, 10).forEach(function (artist) {
+					var normalizedArtistName = normalizeArtistName(artist.name);
+					loadData('lastfm/library/tracks/celston/' + encodeURIComponent(artist.name.toLowerCase()), 1, function (libraryTracks) {
+						var usedTrackNames = new Array();
+						for (var trackName in libraryTracks) {
+							if (libraryTracks[trackName].playcount < 2) {
+								findTracks(normalizedArtistName, trackName, function (tracks) {
+									console.log(tracks);
+									if (tracks.length > 0) {
+										loadedPlaylist.tracks.add(tracks[0]);
+									}
+								});
+							}
+							usedTrackNames.push(trackName);
+						}
+						loadData('lastfm/artist/tracks/' + encodeURIComponent(artist.name.toLowerCase()) + '/400', 1, function (artistTracks) {
+							for (var trackName in artistTracks) {
+								if (usedTrackNames.indexOf(trackName) == -1) {
+									findTracks(normalizedArtistName, trackName, function (tracks) {
+										console.log(tracks);
+										if (tracks.length > 0) {
+											loadedPlaylist.tracks.add(tracks[0]);
+										}
+									});
+								}
+							}
+						});
+					});
+				});
+			});
+		});
+	}
+
+	function generatePlaylistForUsedLocalTracks() {
+		library.forCurrentUser().playlists.snapshot().done(function (snapshot) {
+			var playlists = new Array();
+			for (var i = 0; i < snapshot.length; i++) {
+				var playlist = snapshot.get(i);
+				if (playlist) {
+					playlists.push(playlist);
+				}
+			}
+	
+			createAndLoadPlaylistWithDateName(function () {
+				var used = new Array();
+				playlists.forEach(function (playlist) {
+					playlist.load('tracks').done(function (loadedPlaylist) {
+						snapshotAndLoadAll(loadedPlaylist.tracks, function (tracks) {
+							tracks.forEach(function (track) {
+								if (track.local && used.indexOf(track.uri) == -1) {
+									currentPlaylist.tracks.add(track);
+									used.push(track.uri);
+								}
+							});
+						});
+					});
+				});
+			});
+		});
+	}
+
+	//initTrackIndex(function () { });
+
+	function generatePlaylistFromLastFmPersonalTagSimilarArtists() {
+		loadData('lastfm/user/personaltags/artist/celston/hip-hop', 0, function (data) {
+			unprocessedArtists = data;
+			processArtists(loadSimilarArtists, loadSimilarArtistsCompleted);
+		});
+	}
+
+	function loadSimilarArtists(artist, completedCallback) {
+		loadData('lastfm/artist/similar/' + encodeURIComponent(artist.replace('/', '').toLowerCase()), 30, function (data) {
+			if (!similarArtists.hasOwnProperty(artist)) {
+				similarArtists[artist] = 0;
+			}
+			similarArtists[artist] += 1;
+			data.forEach(function (similarArtist) {
+				if (!similarArtists.hasOwnProperty(similarArtist.name)) {
+					similarArtists[similarArtist.name] = 0;
+				}
+				similarArtists[similarArtist.name] += new Number(similarArtist.match);
+			});
+			removeElementFromArray(unprocessedArtists, artist);
+			processArtists(loadSimilarArtists, loadSimilarArtistsCompleted);
+		});
+	}
+
+	function loadSimilarArtistsCompleted() {
+		loadData('lastfm/user/artists/celston', 1, function (data) {
+			var userArtists = {};
+			data.forEach(function (userArtist) {
+				userArtists[userArtist.name] = userArtist.playcount;
+			});
+
+			var scale = 1000;
+			var hash = {};
+			for (var artist in similarArtists) {
+				var bonus = userArtists.hasOwnProperty(artist) ? Math.sqrt(userArtists[artist]) : 1;
+
+				var key = Math.round(similarArtists[artist] * bonus * scale);
+				var found = false;
+				while (!found) {
+					if (!hash.hasOwnProperty(key)) {
+						hash[key] = artist;
+						found = true;
+					}
+					else {
+						key += rand(1, scale);
+					}
+				}
+			}
+	
+			var hashKeys = Object.keys(hash);
+			hashKeys.sort(function (a, b) {
+				var n1 = new Number(a);
+				var n2 = new Number(b);
+				return n1 > n2 ? -1 : 1;
+			});
+			var filteredHash = {};
+			hashKeys.slice(0, Math.round(hashKeys.length/10)).forEach(function (key) {
+				filteredHash[key] = hash[key];
+			});
+	
+			unprocessedArtists = new Array();
+			for (var i = 0; i < 2000; i++) {
+				unprocessedArtists.push(wrand(filteredHash));
+			}
+	
+			createAndLoadPlaylistWithDateName(function (loadedPlaylist) {
+				processArtists(addTrackFromArtistToPlaylist, addTracksCompleted);
+			});
+		});
+	}
+
+	function addTrackFromArtistToPlaylist(artist) {
+		loadData('lastfm/library/tracks/celston/' + encodeURIComponent(artist.replace('/', '').toLowerCase()), 1, function (data) {
+			var normalizedArtistName = normalizeArtistName(artist);
+			if (Object.keys(data).length > 0) {
+				var hash = {};
+				var scale = 100;
+				for (var trackName in data) {
+					if (!failures.hasOwnProperty(normalizedArtistName) || !failures[normalizedArtistName].hasOwnProperty(trackName)) {
+						var key = data[trackName].playcount * scale;
+						var found = false;
+						while (!found) {
+							if (!hash.hasOwnProperty(key)) {
+								hash[key] = trackName;
+								found = true;
+							}
+							else {
+								key += rand(1, scale);
+							}
+						}
+					}
+				}
+				if (Object.keys(hash).length > 0) {
+					findTracks(normalizedArtistName, wrand(hash), function (tracks) {
+						if (!addTracksToPlaylist(tracks, 1, currentPlaylist)) {
+							console.log('Nothing found for ' + artist + ' - ' + trackName);
+							if (Object.keys(hash).length < 2) {
+								removeElementFromArray(unprocessedArtists, artist);
+							}
+							else {
+								console.log('Try again...');
+							}
+						}
+						else {
+							removeElementFromArray(unprocessedArtists, artist);
+						}
+						processArtists(addTrackFromArtistToPlaylist, addTracksCompleted);
+					});
+				}
+				else {
+					removeElementFromArray(unprocessedArtists, artist);
+					processArtists(addTrackFromArtistToPlaylist, addTracksCompleted);
+				}
+			}
+			else {
+				loadData('lastfm/artist/tracks/' + encodeURIComponent(artist.replace('/', '').toLowerCase()) + '/5', 30, function (data) {
+					if (Object.keys(data).length > 0) {
+						var hash = {};
+						for (var trackName in data) {
+							if (!failures.hasOwnProperty(normalizedArtistName) || !failures[normalizedArtistName].hasOwnProperty(trackName)) {
+								var key = data[trackName].listeners;
+								var found = false;
+								while (!found) {
+									if (!hash.hasOwnProperty(key)) {
+										hash[key] = trackName;
+										found = true;
+									}
+									else {
+										key += 1;
+									}
+								}
+							}
+						}
+						if (Object.keys(hash).length != 0) {
+							findTracks(normalizeArtistName(artist), wrand(hash), function (tracks) {
+								if (!addTracksToPlaylist(tracks, 1, currentPlaylist)) {
+									console.log('Nothing found for ' + artist + ' - ' + trackName);
+									if (Object.keys(hash).length < 2) {
+										removeElementFromArray(unprocessedArtists, artist);
+									}
+									else {
+										console.log('Try again...');
+									}
+								}
+								else {
+									removeElementFromArray(unprocessedArtists, artist);
+								}
+								processArtists(addTrackFromArtistToPlaylist, addTracksCompleted);
+							});
+						}
+						else {
+							removeElementFromArray(unprocessedArtists, artist);
+							processArtists(addTrackFromArtistToPlaylist, addTracksCompleted);
+						}
+					}
+					else {
+						removeElementFromArray(unprocessedArtists, artist);
+						processArtists(addTrackFromArtistToPlaylist, addTracksCompleted);
+					}
+				});
+			}
+		});
+	}
+
+	function addTracksCompleted() {
+		addLog('*** DONE ***');
+		console.log('*** DONE ***');
+	}
+
+	function removeElementFromArray(array, element) {
+		array.splice(array.indexOf(element), 1);
+	}
+
+	function processArtists(processCallback, completedCallback) {
+		if (unprocessedArtists.length > 0) {
+			if (totalArtists == 0) {
+				totalArtists = unprocessedArtists.length;
+			}
+			var percent = Math.round(100 * (totalArtists - unprocessedArtists.length)/totalArtists);
+			$('.progress .progress-bar').width(percent + '%');
+			var artist = unprocessedArtists.shift();
+			$('#status').html('Processing: ' + artist + ' (' + unprocessedArtists.length + ' remaining of ' + totalArtists + ')');
+			processCallback(artist, completedCallback);
+		}
+		else {
+			$('.progress .progress-bar').width('100%');
+			$('#status').html('*** DONE ***');
+			completedCallback();
+		}
+	}
+
+	function removeRecentlyProcessedArtist() {
+		unprocessedArtists.shift();
+	}
+
+	function generatePlaylistFromLastFmLibraryArtists() {
+		var d = new Date();
+		createAndLoadPlaylist(d.toString(), function (loadedPlaylist) {
+			loadData('lastfm/library/artists/celston', 1, function (artists) {
+				artists.slice(500, 1000).forEach(function (libraryArtist) {
+					loadData('lastfm/library/tracks/celston/' + encodeURIComponent(libraryArtist.replace('/', '').name), 1, function (libraryArtistTracks) {
+						var artistName = normalizeArtistName(libraryArtist.name);
+						for (var trackName in libraryArtistTracks) {
+							var count = Math.floor(libraryArtistTracks[trackName].playcount/3);
+							if (count == 0) {
+								count = 1;
+							}
+							findTracks(artistName, trackName, function (tracks) {
+								if (!addTracksToPlaylist(tracks, count, loadedPlaylist)) {
+									console.log('Nothing found for ' + artistName + ' - ' + trackName);
+								}
+							});
+						}
+					});
+				});
+			});
+		});
+	}
+
+	function createAndLoadPlaylistWithDateName(callback) {
+		var d = new Date();
+		createAndLoadPlaylist(d.toString(), callback);
+	}
+
+	function createAndLoadPlaylist(name, callback) {
+		models.Playlist.create(name).done(function (playlist) {
+			models.Playlist.fromURI(playlist.uri).load('tracks').done(function (loadedPlaylist) {
+				currentPlaylist = loadedPlaylist;
+				callback(loadedPlaylist)
+			});
+		});
+	}
+
+	function createAndLoadTemporaryPlaylist(name, callback) {
+		models.Playlist.create(name).done(function (playlist) {
+			models.Playlist.fromURI(playlist.uri).load('tracks').done(function (loadedPlaylist) {
+				callback(loadedPlaylist)
+			});
+		});
+	}
+
+	function addTracksToPlaylist(tracks, count, playlist) {
+		if (tracks.length > 0) {
+			tracks.sort(sortSpotifyTracksByPopularity);
+			while (tracks.length < count) {
+				tracks.forEach(function (track) {
+					playlist.tracks.add(track);
+					count--;
+				});
+			}
+			tracks.slice(0, count).forEach(function (track) {
+				playlist.tracks.add(track);
+			});
+
+			return true;
+		}
+		return false;
+	}
+
+	function processSpiderArtists() {
+		if (unprocessedSpiderArtists.length > 0) {
+			var searchArtist = unprocessedSpiderArtists.pop();
+			models.Playlist.create(searchArtist).done(function (playlist) {
+				models.Playlist.fromURI(playlist.uri).load('tracks').done(function (loadedPlaylist) {
+					currentPlaylist = loadedPlaylist;
+					search.search(searchArtist).artists.snapshot().done(function (snapshot) {
+						snapshot.loadAll('albums', 'singles').done(function (loadedSearchArtists) {
+							searchArtist = normalizeArtistName(searchArtist);
+							loadedSearchArtists.forEach(function (loadedSearchArtist) {
+								if (normalizeArtistName(loadedSearchArtist.name) == searchArtist) {
+									loadedSearchArtist.albums.snapshot().done(function (albumsSnapshot) {
+										albumsSnapshot.loadAll().each(function (albumGroup) {
+											albumGroup.albums.forEach(function (album) {
+												if (album.playable) {
+													album.load('tracks').done(function (loadedAlbum) {
+														loadedAlbum.tracks.snapshot().done(function (tracksSnapshot) {
+															tracksSnapshot.loadAll().each(function (track) {
+																loadedPlaylist.tracks.add(track);
+															});
+														});
+													});
+												}
+											});
+										});
+									});
+									loadedSearchArtist.appearances.snapshot().done(function (appearancesSnapshot) {
+										appearancesSnapshot.loadAll().each(function (albumGroup) {
+											albumGroup.albums.forEach(function (album) {
+												if (album.playable) {
+													album.load('tracks').done(function (loadedAlbum) {
+														loadedAlbum.tracks.snapshot().done(function (tracksSnapshot) {
+															tracksSnapshot.loadAll().each(function (track) {
+																track.artists.forEach(function (trackArtist) {
+																	if (normalizeArtistName(trackArtist.name) == searchArtist) {
+																		loadedPlaylist.tracks.add(track);
+																	}
+																});
+															});
+														});
+													});
+												}
+											});
+										});
+									});
+									loadedSearchArtist.compilations.snapshot().done(function (compilationsSnapshot) {
+										compilationsSnapshot.loadAll().each(function (temp) {
+										});
+									});
+									loadedSearchArtist.singles.snapshot().done(function (singlesSnapshot) {
+										singlesSnapshot.loadAll().each(function (albumGroup) {
+											albumGroup.albums.forEach(function (album) {
+												if (album.playable) {
+													album.load('tracks').done(function (loadedAlbum) {
+														loadedAlbum.tracks.snapshot().done(function (tracksSnapshot) {
+															tracksSnapshot.loadAll().each(function (track) {
+																loadedPlaylist.tracks.add(track);
+															});
+														});
+													});
+												}
+											});
+										});
+									});
+								}
+							});
+						});
+					});
+				});
+			});
+			processSpiderArtists();
+		}
+	}
+
+	/*
+	var submitButton = document.getElementById('submit');
+	submitButton.addEventListener('click', foo);
+	*/
+
+	function foo() {
+		var user = $('#user').val();
+		var tag = $('#tag').val();
+
+		var d = new Date();
+		models.Playlist.create(d.toString()).done(function (playlist) {
+			models.Playlist.fromURI(playlist.uri).load('tracks').done(function (loadedPlaylist) {
+				currentPlaylist = loadedPlaylist
+
+				models.Track.fromURI('spotify:track:2rN545XjvkPCtTx2XUExVq').load().done(function (track) {
+					for (var i = 0; i < 20000; i++) {
+						console.log(i);
+						currentPlaylist.tracks.add(track);
+					}
+				});
+
+	
+				/*
+				loadData('lastfm/user/recenttracks/' + encodeURIComponent(user) + '/7200', 1, function (data) {
+					recentArtists = data;
+					unprocessedRecentArtists = clone(data);
+					processRecentArtists();
+				});
+				*/
+			});
+		});
+	
+		/*
+		var log = $('#ta_log');
+		log.val('Loading tag artists...');
+	
+		loadData('lastfm/user/personaltags/artist/' + user + '/' + encodeURIComponent(tag), 1, function(data) {
+			tagArtistQueue = data;
+			processTagArtistQueue();
+		});
+		*/
+
+		/*
+		loadData('lastfm/library/artists/' + encodeURIComponent(user), 1, function (data) {
+			for (var i = 0; i < 20; i++) {
+				var curArtist = data[i].name;
+				console.log(curArtist);
+				var searchResult = search.search(curArtist);
+				searchResult.artists.snapshot().done(createArtistSpiderFunction(searchResult, curArtist));
+			}
+		});
+		*/
+	}
+
+	function initTrackIndex(callback) {
+		loadSnapshotAndLoadAll(library.forCurrentUser().tracks, function (loadedLibraryTracks) {
+			for (var i = 0; i < loadedLibraryTracks.length; i++) {
+				var track = loadedLibraryTracks[i];
+				if (track.playable) {
+					var curTrackName = normalizeTrackName(track.name);
+					for (var j = 0; j < track.artists.length; j++) {
+						var curArtistName = normalizeArtistName(track.artists[j].name);
+						if (!trackIndex.hasOwnProperty(curArtistName)) {
+							trackIndex[curArtistName] = {};
+						}
+						if (!trackIndex[curArtistName].hasOwnProperty(curTrackName)) {
+							trackIndex[curArtistName][curTrackName] = new Array();
+						}
+						trackIndex[curArtistName][curTrackName].push({
+							uri: track.uri,
+							popularity: track.popularity
+						});
+					}
+				}
+			}
+			callback();
+		});
+	}
+
+	function loadSnapshotAndLoadAll(obj, callback) {
+		obj.load().done(function (obj2) {
+			snapshotAndLoadAll(obj2, callback);
+		});
+	}
+
+	function snapshotAndLoadAll(obj, callback) {
+		obj.snapshot().done(function (snapshot) {
+			snapshot.loadAll().done(callback);
+		});
+	}
+
+	function findTracks(artistName, trackName, callback) {
+		var normalizedArtistName = normalizeArtistName(artistName);
+		console.log('findTracks(' + normalizedArtistName + ', ' + trackName + ')');
+		var found = false;
+		if (trackIndex.hasOwnProperty(normalizedArtistName)) {
+			if (trackIndex[normalizedArtistName].hasOwnProperty(trackName)) {
+				console.log('check 1');
+				callback(trackIndex[normalizedArtistName][trackName], artistName, trackName);
+				found = true;
+			}
+		}
+
+		if (!found) {
+			search.search(artistName + ' ' + trackName).tracks.snapshot().done(function (searchTracksSnapshot) {
+				searchTracksSnapshot.loadAll().done(function (loadedSearchTracks) {
+					console.log(loadedSearchTracks);
+					loadedSearchTracks.forEach(function (track) {
+						var curTrackName = normalizeTrackName(track.name);
+						for (var j = 0; j < track.artists.length; j++) {
+							var curArtistName = normalizeArtistName(track.artists[j].name);
+							if (!trackIndex.hasOwnProperty(curArtistName)) {
+								trackIndex[curArtistName] = {};
+							}
+							if (!trackIndex[curArtistName].hasOwnProperty(curTrackName)) {
+								trackIndex[curArtistName][curTrackName] = new Array();
+							}
+							trackIndex[curArtistName][curTrackName].push(track);
+						}
+					});
+					if (trackIndex.hasOwnProperty(normalizedArtistName)) {
+						if (trackIndex[normalizedArtistName].hasOwnProperty(trackName)) {
+							console.log('check 2');
+							callback(trackIndex[normalizedArtistName][trackName], artistName, trackName);
+							found = true;
+						}
+					}
+					if (!found) {
+						if (!failures.hasOwnProperty(normalizedArtistName)) {
+							failures[normalizedArtistName] = {};
+						}
+						if (!failures[normalizedArtistName].hasOwnProperty(trackName)) {
+							failures[normalizedArtistName][trackName] = 0;
+						}
+						failures[normalizedArtistName][trackName]++;
+						console.log('check 3');
+						callback(new Array(), artistName, trackName);
+					}
+					console.log('check 5');
+				});
+				console.log('check 7');
+			});
+			console.log('check 8');
+		}
+		console.log('check 9');
+	}
+
+	function checkTrack(artistName, trackName, track, callback) {
+		var curTrackName = normalizeTrackName(track.name);
+		for (var j = 0; j < track.artists.length; j++) {
+			var curArtistName = normalizeArtistName(track.artists[j].name);
+			if (!trackIndex.hasOwnProperty(curArtistName)) {
+				trackIndex[curArtistName] = {};
+			}
+			if (!trackIndex[curArtistName].hasOwnProperty(curTrackName)) {
+				trackIndex[curArtistName][curTrackName] = new Array();
+			}
+			trackIndex[curArtistName][curTrackName].push(track.uri);
+			if (artistName == curArtistName && trackName == curTrackName) {
+				callback(trackIndex[curArtistName][curTrackName]);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	function sortSpotifyTracksByPopularity(a, b) {
+		if (a.popularity == b.popularity) {
+			return 0;
+		}
+		return a.popularity > b.popularity ? -1 : 1;
+	}
+});
+
+function clone(obj) {
+	if (null == obj || 'object' != typeof obj) return obj;
+	var copy = obj.constructor();
+	for (var attr in obj) {
+		if (obj.hasOwnProperty(attr)) copy[attr] = obj[attr];
+	}
+
+	return copy;
+}
+
+function processRecentArtists() {
+	var keys = Object.keys(unprocessedRecentArtists);
+	if (keys.length > 0) {
+		var artist = keys[0];
+		addLog(artist);
+		unprocessedRecentTracks = clone(unprocessedRecentArtists[artist]);
+		processRecentTracks(artist);
+	}
+	else {
+		//console.log(recentTracks);
+		console.log('***** DONE *****');
+	}
+}
+
+function processRecentTracks(artist) {
+	var keys = Object.keys(unprocessedRecentTracks);
+	if (keys.length > 0) {
+		var track = keys[0];
+		var count = unprocessedRecentTracks[track];
+		addLog('    ' + track);
+		var searchResult = globalSearch.search(artist + ' ' + track);
+		searchResult.tracks.snapshot().done(createSearchTrackCallback(artist, track, count));
+	}
+	else {
+		delete unprocessedRecentArtists[artist];
+		processRecentArtists();
+	}
+}
+
+String.prototype.endsWith = function(suffix) {
+	return this.indexOf(suffix, this.length - suffix.length) !== -1;
+};
+
+function createSearchTrackCallback(artistName, trackName, count) {
+	return function (snapshot) {
+		snapshot.loadAll().done(function (loadedTracks) {
+			var filtered = new Array();
+			loadedTracks.forEach(function (track) {
+				if (track.playable && normalizeTrackName(track.name) == trackName && !track.name.endsWith(' - Commentary Version')) {
+					var artistMatch = false;
+					track.artists.forEach(function (e) {
+						if (normalizeArtistName(e.name) == artistName) {
+							artistMatch = true;
+						}
+					});
+					if (artistMatch) {
+						filtered.push(track);
+					}
+				}
+			});
+			if (filtered.length > 0) {
+				filtered.sort(function (a, b) {
+					if (a.popularity == b.popularity) {
+						return 0;
+					}
+	
+					return a.popularity > b.popularity ? -1 : 1;
+				});
+				while (count > filtered.length) {
+					filtered.forEach(function (t) {
+						currentPlaylist.tracks.add(t);
+						count--;
+					});
+				}
+				filtered.slice(0, count).forEach(function (t) {
+					currentPlaylist.tracks.add(t);
+					count--;
+				});
+			}
+			else {
+				addLog('No results for "' + artistName + ' - ' + trackName + '"');
+			}
+		});
+		delete unprocessedRecentTracks[trackName];
+		processRecentTracks(artistName);
+	};
+}
+
+function createArtistSpiderFunction(searchResult, curArtist) {
+	return function (a) {
+		a.loadAll('albums').each(function (artist) {
+			//addLog(artist.name);
+			if (normalizeArtistName(artist.name) == normalizeArtistName(searchResult.query)) {
+				artist.albums.snapshot().done(function(albumGroups) {
+					albumGroups.loadAll().each(function (albumGroup) {
+						albumGroup.albums.forEach(function(album) {
+							if (album.playable) {
+								album.load('name', 'tracks').done(function(albumLoaded) {
+									album.tracks.snapshot().done(function (tracks) {
+										tracks.loadAll().each(function (track) {
+											if (track.playable) {
+												addLog(track.uri);
+											}
+										});
+									});
+								});
+							}
+						});
+					});
+				});
+			}
+		});
+	}
+}
+
+var artistTracks = {};
+var libraryTracks = {};
+
+var Gnosis = Gnosis || {};
+Gnosis.Data = {
+	Local: {
+		set: function(obj, key) {
+			//session
+			if(sessionStorage.setObject==='function'){
+				sessionStorage.setObject(key, obj);
+			}else{
+				sessionStorage.setItem(key, JSON.stringify(obj));
+			}
+			//localStorage
+			if (localStorage.setObject === 'function'){
+				localStorage.setObject(key, obj);
+			}else{
+				localStorage.setItem(key, JSON.stringify(obj));
+			}
+			return true;
+		},
+		get: function(key) {
+			var obj = localStorage.getItem(key);
+			if (obj !== null) {
+				if (typeof obj === 'string') {
+					obj = JSON.parse(obj);
+				}
+			}
+			return obj;
+		}
+	}
+};
+
+function loadData(path, days, callback) {
+	console.log('loadData(' + path + ')');
+	var expireDate = new Date();
+	expireDate.setDate(expireDate.getDate() - days);
+
+	if (remoteData.hasOwnProperty(path)) {
+		callback(remoteData[path]);
+	}
+	else {
+		/*
+		var local = Gnosis.Data.Local.get(path);
+		if (local !== null ) {
+			if (new Date(local.created) > expireDate) {
+				local.accessed = new Date();
+				Gnosis.Data.Local.set(local, path);
+				callback(local.data);
+				return;
+			}
+			else {
+				localStorage.removeItem(path);
+			}
+		}
+		*/
+	
+		$.ajax('http://findgnosis.com/' + path, {
+			success: function(data) {
+				var cache = {
+					data: data.result,
+					created: new Date(),
+					accessed: new Date()
+				};
+				//Gnosis.Data.Local.set(cache, path);
+				remoteData[path] = data.result;
+				callback(data.result);
+			}
+		});
+	}
+}
+
+function setCache(key, obj) {
+	var cache = Gnosis.Data.Local.get('cache');
+	if (cache == null) {
+		cache = {};
+	}
+	cache[key] = {
+		val: obj,
+		created: new Date(),
+		accessed: new Date()
+	};
+	console.log(cache);
+	Gnosis.Data.Local.set(cache, 'cache');
+}
+
+function getCache(key, days) {
+}
+
+function addLog(txt) {
+	var log = $('#ta_log');
+	log.val(log.val() + txt + '\n');
+	log.scrollTop(log[0].scrollHeight);
+}
+
+function max(array) {
+	return Math.max.apply(Math, array);
+}
+
+function wrand(data) {
+	var totalw = 0;
+	var curw = 0;
+
+	var weights = new Array();
+	for (i in data) {
+		totalw += new Number(i);
+		weights.push(new Number(i));
+	}
+	var maxWeight = max(weights);
+
+	var r = rand(0, totalw);
+
+	for (i in data) {
+		curw += new Number(i);
+		if (curw > r) return data[i];
+	}
+
+	return data[maxWeight];
+}
+
+function rand(min, max) {
+	return Math.floor((Math.random()*(max-min))+min)
+}
+
+function processArtist(artist) {
+	if (!libraryTracks.hasOwnProperty(artist)) {
+		var user = $('#user').val();
+		loadData('lastfm/library/tracks/' + user + '/' + encodeURIComponent(artist), -1, function(data) {
+			libraryTracks[artist] = {};
+			var scale = 1000;
+			for (name in data) {
+				var key = data[name].playcount * scale;
+				var found = false;
+				while (!found) {
+					if (!libraryTracks[artist].hasOwnProperty(key)) {
+						libraryTracks[artist][key] = name;
+						found = true;
+					}
+					else {
+						key += rand(1, scale);
+					}
+				}
+			}
+			processArtist(artist);
+		});
+	}
+	else if (!artistTracks.hasOwnProperty(artist)) {
+		var user = $('#user').val();
+		loadData('lastfm/artist/tracks/' + encodeURIComponent(artist) + '/10', 7, function(data) {
+			artistTracks[artist] = {};
+			var scale = 1000;
+			for (name in data) {
+				var key = data[name].playcount * scale;
+				var found = false;
+				while (!found) {
+					if (!artistTracks[artist].hasOwnProperty(key)) {
+						artistTracks[artist][key] = name;
+						found = true;
+					}
+					else {
+						key += rand(1, scale);
+					}
+				}
+			}
+			processArtist(artist);
+		});
+	}
+	else {
+		addLog("Selecting track for '" + artist + "'");
+
+		if (Object.keys(libraryTracks[artist]).length > 1) {
+			var track = wrand(libraryTracks[artist]);
+			console.log('Library Track: ' + track);
+			addLog(track);
+		}
+		else {
+			var track = wrand(artistTracks[artist]);
+			console.log('Artist Track: ' + track);
+			addLog(track);
+		}
+		remainingTracks--;
+		processRemainingTracks();
+	}
+}
+
+function processRemainingTracks() {
+	if (remainingTracks > 0) {
+		addLog('Remaining Tracks: ' + remainingTracks);
+		processArtist(wrand(similarArtistHash));
+	}
+	else {
+		addLog('*** DONE ***');
+	}
+}
+
+var tagArtistQueue;
+var similarArtists = similarArtists || {};
+var similarArtistHash = {};
+var remainingTracks = 0;
+
+function processTagArtistQueue() {
+	if (tagArtistQueue.length == 0) {
+		addLog('Loading user artists...');
+		var user = $('#user').val();
+		loadData('lastfm/user/artists/' + user, 1, function (data) {
+			var userArtists = {};
+			data.forEach(function (element) {
+				userArtists[element.name] = element;
+			});
+			var scores = new Array();
+			var scale = 1000;
+			for (artist in similarArtists) {
+				var key = Math.sqrt(similarArtists[artist]) * scale;
+				if (userArtists.hasOwnProperty(artist)) {
+					key *= Math.sqrt(userArtists[artist].playcount);
+				}
+				key = Math.round(key);
+				var found = false;
+				while (!found) {
+					if (!similarArtistHash.hasOwnProperty(key)) {
+						similarArtistHash[key] = artist;
+						found = true;
+					}
+					else {
+						key += rand(1, scale);
+					}
+				}
+			}
+			addLog('--------------------------------------------------');
+			remainingTracks = new Number($('#n').val());
+			processRemainingTracks();
+		});
+	}
+	else {
+		var tagArtist = tagArtistQueue.pop();
+		addLog("Loading similar artists for '" + tagArtist + "'");
+		loadData('lastfm/artist/similar/' + encodeURIComponent(tagArtist), 7, function (data) {
+			data.forEach(function (element, index, arr) {
+				if (!similarArtists.hasOwnProperty(element.name)) {
+					similarArtists[element.name] = 0;
+				}
+				similarArtists[element.name] += new Number(element.match);
+			});
+			processTagArtistQueue();
+		});
+	}
+}
+
+function normalizeArtistName(name) {
+	name = name.toUpperCase().trim();
+
+	name = name.replace(/^\W+/, '');
+	name = name.replace(/&/, 'AND');
+	name = name.replace(/^THE /, '');
+
+	name = name.trim();
+
+	return name;
+}
+
+function normalizeTrackName(name) {
+	name = name.toUpperCase().trim();
+
+	name = name.replace(/^\s*-\s*/, '');
+	name = name.replace(/\s+\W+\s*$/, '');
+	name = name.replace(/^\d\d+\.?\s+(-\s+)?(\w)/, '$2');
+	name = name.replace(/^\s*-\s*/, '');
+	name = name.replace(/\s+-\s+.*$/, '');
+	name = name.replace(/\s*\[[^\]]+\]$/, '');
+	name = name.replace(/\s*\([^\)]+\)?$/, '');
+	name = name.replace(/\s*\/\s*.+$/, '');
+	name = name.replace(/-+/, ' ');
+
+	name = name.replace(/&/, 'AND');
+	name = name.replace(/^THE /, '');
+	name = name.replace(/^A /, '');
+	name = name.replace(/\W+$/, '');
+
+	name = name.trim();
+
+	return name;
+}
+

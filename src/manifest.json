@@ -1,0 +1,60 @@
+{
+  "AppDescription": {
+    "de": "Description of Find Gnosis in German",
+    "en": "Find Gnosis",
+    "es": "Description of Find Gnosis in Spanish",
+    "es-419": "Description of Find Gnosis in LA Spanish",
+    "fr": "Description of Find Gnosis in French",
+    "it": "Description of Find Gnosis in Italian",
+    "nl": "Description of Find Gnosis in Dutch",
+    "pl": "Description of Find Gnosis in Polish",
+    "zh-Hant": "Description of Find Gnosis in Chinese"
+  },
+  "AppIcon": {
+    "18x18": "images/icons/icon-18x18.png",
+    "36x18": "images/icons/icon-36x18.png",
+    "32x32": "images/icons/icon-32x32.png",
+    "64x64": "images/icons/icon-64x64.png",
+    "128x128": "images/icons/icon-128x128.png",
+    "300x300": "images/icons/icon-300x300.png"
+  },
+  "AppName": {
+    "de": "Find Gnosis",
+    "en": "Find Gnosis",
+    "es": "Find Gnosis",
+    "es-419": "Find Gnosis",
+    "fr": "Find Gnosis",
+    "it": "Find Gnosis",
+    "nl": "Find Gnosis",
+    "pl": "Find Gnosis",
+    "zh-Hant": "Find Gnosis"
+  },
+  "BundleIdentifier": "find-gnosis",
+  "BundleType": "Application",
+  "BundleVersion": "0.0.1",
+  "Dependencies": {
+    "api": "1.0.0",
+    "views": "1.10.0"
+  },
+  "RequiredPermissions": [
+    "http://findgnosis.com",
+    "http://code.jquery.com",
+    "http://netdna.bootstrapcdn.com"
+  ],
+  "SupportedDeviceClasses": [
+    "Web",
+    "Desktop"
+  ],
+  "SupportedLanguages": [
+    "de",
+    "en",
+    "es",
+    "es-419",
+    "fr",
+    "it",
+    "nl",
+    "pl",
+    "zh-Hant"
+  ],
+  "VendorIdentifier": "com.myorganization"
+}

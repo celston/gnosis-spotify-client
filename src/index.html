@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+		<title>The name of the app</title>
+		<!-- Include the stylesheets you need for the Views components -->
+		<!-- See https://developer.spotify.com/technologies/apps/docs/preview/views/ -->
+		<link rel="stylesheet" href="$views/css/image.css">
+		<link rel="stylesheet" href="$views/css/list.css">
+		<link rel="stylesheet" href="$views/css/buttons.css">
+		<link rel="stylesheet" href="http://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css"/>
+		<!-- <link rel="stylesheet" href="$views/css/throbber.css"> -->
+		<link rel="stylesheet" href="css/style.css">
+		<!-- If you are using the preview SDK for webplayer then uncomment the script below -->
+		<!--script src="http://d1hza3lyffsoht.cloudfront.net/preview-sdk/bootstrap.js"></script-->
+		<script src="http://code.jquery.com/jquery-1.10.1.min.js"></script>
+		<script src="http://code.jquery.com/jquery-migrate-1.2.1.min.js"></script>
+		<script src="http://netdna.bootstrapcdn.com/bootstrap/3.0.0/js/bootstrap.min.js"></script>
+	</head>
+	<body>
+		<h1>Find Gnosis</h1>
+
+		<button id="go">Go!</button>
+
+		<div class="progress progress-striped active">
+			<div class="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="width: 0%;">
+				<span class="sr-only">0% complete</span>
+			</div>
+		</div>
+
+		<div id="status"></div>
+
+		<div id="playlist"></div>
+		<!--
+		<div>
+			<div><label>Last.Fm User:</label></div>
+			<div>
+				<input id="user"  value="celston" />
+			</div>
+		</div>
+
+		<div>
+			<div><label>Artist</label></div>
+			<div>
+				<input id="artist" value="" />
+			</div>
+		</div>
+
+		<div>
+			<div><label>Tag:</label></div>
+			<div>
+				<input id="tag" value="punk" />
+			</div>
+		</div>
+
+		<div>
+			<div><label>Number of Tracks:</label></div>
+			<div>
+				<input id="n" type="number" min="1" value="10" />
+			</div>
+		</div>
+
+		<button id="submit">Submit</button>
+
+		<div>
+			<div><label>Log:</label></div>
+			<div><textarea id="ta_log" style="width: 100%; height: 450px;" readonly></textarea></div>
+		</div>
+
+		<div>Total Artists: <input id="totalArtists" value="0" /></div>
+		<div>Total Tracks: <input id="totalTracks" value="0" /></div>
+
+		<table id="artists">
+			<thead>
+				<tr>
+					<th>&nbsp;</th>
+					<th>Artist</th>
+					<th>Track Name</th>
+					<th>Play Count</th>
+					<th>Repeats</th>
+				</tr>
+			</thead>
+			<tbody>
+			</tbody>
+		</table>
+
+		<div id="playlist-container" style="width: 50%; float: left;">
+			<h2>Playlist</h2>
+
+			<div id="playlist-loading"><img src="images/loading.gif" /></div>
+			<div id="playlist-active"></div>
+		</div>
+
+		<div style="width: 10%; height: 200px; float: left;">&nbsp;</div>
+
+		<div id="artist-container" style="width: 40%; float: left;">
+			<h2>Artists</h2>
+
+			<table id="artists">
+				<thead>
+					<tr>
+						<th>&nbsp;</th>
+						<th>Name</th>
+						<th>Play Count</th>
+					</tr>
+				</thead>
+				<tbody>
+				</tbody>
+			</table>
+		</div>
+
+		<br style="clear: both;" />
+	
+		<script type="script/snippet" data-container="js">
+			console.log('check');
+			var sp = getSpotifyApi();
+			var models = sp.require("$api/models");
+			
+			var submitButton = document.getElementById('submit');
+			
+			submitButton.addEventListener('click', foo);
+			console.log(submitButton);
+			
+		</script>
+		-->
+		<script src="scripts/main.js"></script>
+
+	</body>
+</html>
